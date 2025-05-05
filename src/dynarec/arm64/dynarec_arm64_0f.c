@@ -1081,9 +1081,10 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
         case 0x52:
             INST_NAME("RSQRTPS Gx, Ex");
             nextop = F8;
-            SKIPTEST(x1);
             GETEX(q0, 0, 0);
             GETGX_empty(q1);
+            #if 0
+            SKIPTEST(x1);
             v0 = fpu_get_scratch(dyn, ninst);
             // more precise
             if(q1==q0)
@@ -1094,13 +1095,20 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
             VFMULQS(v1, v0, q0);
             VFRSQRTSQS(v1, v1, v0);
             VFMULQS(q1, v1, v0);
+            #else
+            v0 = fpu_get_scratch(dyn, ninst);
+            VFMOVSQ_8(v0, 0b01110000);    //1.0f
+            VFSQRTQS(q1, q0);
+            VFDIVQS(q1, v0, q1);
+            #endif
             break;
         case 0x53:
             INST_NAME("RCPPS Gx, Ex");
             nextop = F8;
-            SKIPTEST(x1);
             GETEX(q0, 0, 0);
             GETGX_empty(q1);
+            #if 0
+            SKIPTEST(x1);
             if(q0 == q1)
                 v1 = fpu_get_scratch(dyn, ninst);
             else
@@ -1109,6 +1117,11 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
             VFRECPEQS(v0, q0);
             VFRECPSQS(v1, v0, q0);
             VFMULQS(q1, v0, v1);
+            #else
+            v0 = fpu_get_scratch(dyn, ninst);
+            VFMOVSQ_8(v0, 0b01110000);    //1.0f
+            VFDIVQS(q1, v0, q0);
+            #endif
             break;
         case 0x54:
             INST_NAME("ANDPS Gx, Ex");
@@ -1963,6 +1976,7 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
                         INST_NAME("STMXCSR Md");
                         addr = geted(dyn, addr, ninst, nextop, &ed, x2, &fixedaddress, &unscaled, 0xfff<<2, 3, rex, NULL, 0, 0);
                         LDRw_U12(x4, xEmu, offsetof(x64emu_t, mxcsr));
+                        STW(x4, ed, fixedaddress);
                         if(BOX64ENV(sse_flushto0)) {
                             // sync with fpsr, with mask from mxcsr
                             MRS_fpsr(x1);
@@ -1974,7 +1988,6 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
                             //BFXILw(x3, x4, 7, 6); // this would the mask, but let's ignore that for now
                             BFIw(x4, x1, 0, 6); // inject back the flags
                         }
-                        STW(x4, ed, fixedaddress);
                         break;
                     case 4:
                         INST_NAME("XSAVE Ed");
