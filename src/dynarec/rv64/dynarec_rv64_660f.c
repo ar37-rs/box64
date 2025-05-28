@@ -1058,14 +1058,19 @@ uintptr_t dynarec64_660F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             INST_NAME("PCMPEQB Gx,Ex");
             nextop = F8;
             GETGX();
-            GETEX(x2, 0, 15);
-            for (int i = 0; i < 16; ++i) {
-                LBU(x3, gback, gdoffset + i);
-                LBU(x4, wback, fixedaddress + i);
-                SUB(x3, x3, x4);
-                SEQZ(x3, x3);
-                NEG(x3, x3);
-                SB(x3, gback, gdoffset + i);
+            if (rv64_xtheadbb) {
+                GETEX(x2, 0, 8);
+                SSE_LOOP_Q(x3, x4, XOR(x3, x3, x4); TH_TSTNBZ(x3, x3););
+            } else {
+                GETEX(x2, 0, 15);
+                for (int i = 0; i < 16; ++i) {
+                    LBU(x3, gback, gdoffset + i);
+                    LBU(x4, wback, fixedaddress + i);
+                    SUB(x3, x3, x4);
+                    SEQZ(x3, x3);
+                    NEG(x3, x3);
+                    SB(x3, gback, gdoffset + i);
+                }
             }
             break;
         case 0x75:
@@ -1421,8 +1426,8 @@ uintptr_t dynarec64_660F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int 
             B_NEXT_nocond;
             MARK;
             ANDI(xFlags, xFlags, ~(1 << F_ZF));
-            CLZxw(gd, ed, 0, x1, x2, x6);
-            ADDI(x1, xZR, rex.w ? 63 : 31);
+            CLZxw(gd, ed, 1, x1, x2, x6);
+            ADDI(x1, xZR, 63);
             SUB(gd, x1, gd);
             GWBACK;
             break;

@@ -26,6 +26,8 @@ void* mmap(void* addr, size_t length, int prot, int flags, int fd, off_t offset)
 int munmap(void* addr, size_t length);
 int mprotect(void* addr, size_t len, int prot);
 
+void x86Int(void* emu, int code);
+
 void* WinMalloc(size_t size);
 void* WinRealloc(void* ptr, size_t size);
 void* WinCalloc(size_t nmemb, size_t size);
@@ -54,6 +56,7 @@ void PersonalityAddrLimit32Bit(void);
 
 int IsAddrElfOrFileMapped(uintptr_t addr);
 const char* GetNativeName(void* p);
+const char* GetBridgeName(void* p);
 // ----------------------------------------------------------------
 
 #ifndef _WIN32
@@ -93,5 +96,7 @@ extern int isnanf(float);
 #define isnanf isnan
 #define isinff isinf
 #endif
+
+void PrintfFtrace(int prefix, const char* fmt, ...);
 
 #endif //__OS_H_

@@ -937,11 +937,10 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
     if (MODREG) {                                                                                \
         ed = TO_NAT((nextop & 7) + (rex.b << 3));                                                \
         if (dyn->insts[ninst].nat_flags_fusion) {                                                \
-            NATIVEJUMP(NATNO, 8);                                                                \
+            NATIVEMV(NATYES, gd, ed);                                                            \
         } else {                                                                                 \
-            B##NO(tmp1, 8);                                                                      \
+            MV##YES(gd, ed, tmp1);                                                               \
         }                                                                                        \
-        MV(gd, ed);                                                                              \
         if (!rex.w) ZEROUP(gd);                                                                  \
     } else {                                                                                     \
         addr = geted(dyn, addr, ninst, nextop, &ed, tmp2, tmp3, &fixedaddress, rex, NULL, 1, 0); \
@@ -1666,14 +1665,23 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
             INST_NAME("PCMPEQB Gm,Em");
             nextop = F8;
             GETGM();
-            GETEM(x2, 0, 7);
-            for (int i = 0; i < 8; ++i) {
-                LBU(x3, gback, gdoffset + i);
-                LBU(x4, wback, fixedaddress + i);
-                SUB(x3, x3, x4);
-                SEQZ(x3, x3);
-                NEG(x3, x3);
-                SB(x3, gback, gdoffset + i);
+            if (rv64_xtheadbb) {
+                GETEM(x2, 0, 0);
+                LD(x3, gback, gdoffset);
+                LD(x4, wback, fixedaddress);
+                XOR(x3, x3, x4);
+                TH_TSTNBZ(x3, x3);
+                SD(x3, gback, gdoffset);
+            } else {
+                GETEM(x2, 0, 7);
+                for (int i = 0; i < 8; ++i) {
+                    LBU(x3, gback, gdoffset + i);
+                    LBU(x4, wback, fixedaddress + i);
+                    SUB(x3, x3, x4);
+                    SEQZ(x3, x3);
+                    NEG(x3, x3);
+                    SB(x3, gback, gdoffset + i);
+                }
             }
             break;
         case 0x75:
@@ -2077,6 +2085,7 @@ uintptr_t dynarec64_0F(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
             INST_NAME("MOVZX Gd, Eb");
             nextop = F8;
             GETGD;
+            SCRATCH_USAGE(0);
             if (MODREG) {
                 if (rex.rex) {
                     eb1 = TO_NAT((nextop & 7) + (rex.b << 3));
