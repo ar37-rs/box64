@@ -9,7 +9,6 @@
 #include <winternl.h>
 #include <winnt.h>
 
-#include "compiler.h"
 #include "debug.h"
 #include "os.h"
 #include "custommem.h"
@@ -21,7 +20,9 @@
 #include "box64context.h"
 #include "box64cpu.h"
 #include "box64cpu_util.h"
+#include "build_info.h"
 #include "rbtree.h"
+#include "wine/compiler.h"
 #include "wine/debug.h"
 
 uintptr_t box64_pagesize = 4096;
@@ -207,8 +208,8 @@ STATIC_ASSERT(offsetof(x64emu_t, win64_teb) == 3120, offset_of_b_must_be_4);
 #undef STATIC_ASSERT
 
     LoadEnvVariables();
-
-    printf_log(LOG_INFO, "libwowbox64.dll process initializing.\n");
+    if (!BOX64ENV(nobanner)) PrintBox64Version(1);
+    PrintEnvVariables(&box64env, LOG_INFO);
 
     memset(bopcode, 0xc3, sizeof(bopcode));
     memset(unxcode, 0xc3, sizeof(unxcode));
@@ -346,7 +347,7 @@ NTSTATUS WINAPI BTCpuTurboThunkControl(ULONG enable)
     return STATUS_SUCCESS;
 }
 
-void x86IntImpl(x64emu_t *emu, int code)
+void EmitInterruptionImpl(x64emu_t *emu, int code)
 {
     int inst_off = box64env.dynarec ? 2 : 0;
 
@@ -429,10 +430,10 @@ static void __attribute__((naked)) SEHFrameTrampoline2Args(void* Arg0, int Arg1,
          ".seh_endproc" );
 }
 
-void x86Int(void* emu, int code)
+void EmitInterruption(x64emu_t* emu, int num, void* addr)
 {
     CONTEXT *entry_context = NtCurrentTeb()->TlsSlots[WOW64_TLS_MAX_NUMBER];
-    SEHFrameTrampoline2Args(emu, code, (void*)x86IntImpl, entry_context->Sp, entry_context->Pc);
+    SEHFrameTrampoline2Args(emu, num, (void*)EmitInterruptionImpl, entry_context->Sp, entry_context->Pc);
     NtCurrentTeb()->TlsSlots[WOW64_TLS_MAX_NUMBER] = entry_context;
 }
 
