@@ -286,7 +286,13 @@ jobs:
 
       - name: "Get Box64 Version"
         run: echo "BOX64_VERSION=$(cat src/box64version.h | grep BOX64_MAJOR | cut -d " " -f 3).$(cat src/box64version.h | grep BOX64_MINOR | cut -d " " -f 3).$(cat src/box64version.h | grep BOX64_REVISION | cut -d " " -f 3)" >> $GITHUB_ENV
-
+      
+      - name: "Packaging Zip file for ARM64"
+        if: matrix.platform == 'ARM64' && matrix.type != 'StaticBuild'
+        run: |
+          cd build
+          tar --zstd -cf box64-latest.tar.xz box64
+          
       - name: "Packaging WCP file for Winlator"
         if: matrix.platform == 'ANDROID_GLIBC' && matrix.type != 'StaticBuild'
         run: |
@@ -324,7 +330,14 @@ jobs:
           echo "vkDriverLib=" >> pkg-header
 
           7z -tzip -mx=5 a box64-latest.rat files pkg-header
-
+          
+      - name: "Upload ARM64 file"
+        if: matrix.platform == 'ARM64' && matrix.type == 'Release'
+        uses: actions/upload-artifact@v4
+        with:
+          name: box64-ARM64-Release
+          path: build/box64-latest.tar.xz
+          
       - name: "Upload WCP file"
         if: matrix.platform == 'ANDROID_GLIBC' && matrix.type != 'StaticBuild'
         uses: actions/upload-artifact@v4
