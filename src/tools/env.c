@@ -22,6 +22,9 @@ KHASH_MAP_INIT_STR(box64env_entry, box64env_t)
 static kh_box64env_entry_t* box64env_entries = NULL;
 static kh_box64env_entry_t* box64env_entries_gen = NULL;
 
+mmaplist_t* NewMmaplist();
+void DelMmaplist(mmaplist_t* list);
+
 static rbtree_t* envmap = NULL;
 
 static const char default_rcfile[] = 
@@ -649,6 +652,7 @@ typedef struct mapping_s {
     char*       fullname;
     box64env_t* env;
     uintptr_t   start;  //lower address of the map for this file
+    mmaplist_t* mmaplist;
 } mapping_t;
 
 KHASH_MAP_INIT_STR(mapping_entry, mapping_t*);
@@ -698,8 +702,16 @@ void RecordEnvMappings(uintptr_t addr, size_t length, int fd)
         mapping = kh_value(mapping_entries, k);
 
     if(mapping && mapping->start>addr) { 
-        dynarec_log(LOG_INFO, "Mapping %s (%s) adjusted start: %p from %p\n", fullname, lowercase_filename, (void*)addr, (void*)(mapping->start)); 
-        mapping->start = addr;
+        dynarec_log(LOG_INFO, "Ignoring Mapping %s (%s) adjusted start: %p from %p\n", fullname, lowercase_filename, (void*)addr, (void*)(mapping->start)); 
+        box_free(lowercase_filename);
+        return;
+    }
+    if(BOX64ENV(dynarec_log)) {
+        uintptr_t end; uintptr_t val;
+        if(rb_get_end_64(envmap, addr, &val, &end))
+            if(end<addr+length) {
+                dynarec_log(LOG_INFO, "Enlarging Mapping %s (%s) %p-%p from %p\n", fullname, lowercase_filename, (void*)(mapping->start), (void*)(addr+length), (void*)end);
+            }
     }
     rb_set_64(envmap, addr, addr + length, (uint64_t)mapping);
     if(mapping->env) {
@@ -734,6 +746,10 @@ void RemoveMapping(uintptr_t addr, size_t length)
         khint_t k = kh_get(mapping_entry, mapping_entries, mapping->fullname);
         if(k!=kh_end(mapping_entries))
             kh_del(mapping_entry, mapping_entries, k);
+	#ifdef DYNAREC
+        if(mapping->mmaplist)
+            DelMmaplist(mapping->mmaplist);
+	#endif
         box_free(mapping->filename);
         box_free(mapping->fullname);
         box_free(mapping);
@@ -749,6 +765,22 @@ box64env_t* GetCurEnvByAddr(uintptr_t addr)
     if(!env) return &box64env;
     return env;
 }
+
+mmaplist_t* GetMmaplistByAddr(uintptr_t addr)
+{
+    #ifdef DYNAREC
+    if (!envmap) return NULL;
+    mapping_t* mapping = ((mapping_t*)rb_get_64(envmap, addr));
+    if(!mapping) return NULL;
+    mmaplist_t* list = mapping->mmaplist;
+    if(!list)
+        list = mapping->mmaplist = NewMmaplist();
+    return list;
+    #else
+    return NULL;
+    #endif
+}
+
 
 int IsAddrFileMapped(uintptr_t addr, const char** filename, uintptr_t* start)
 {
@@ -774,4 +806,22 @@ size_t SizeFileMapped(uintptr_t addr)
             return end - mapping->start;
     }
     return 0;
+}
+
+int IsAddrNeedReloc(uintptr_t addr)
+{
+    box64env_t* env = GetCurEnvByAddr(addr);
+    if(env->nodynarec)
+        return 0;
+    if(!env->dynacache)
+        return 0;
+    if(env->nodynarec_end && addr>=env->nodynarec_start && addr<env->nodynarec_end)
+        return 0;
+    #ifdef HAVE_TRACE
+    if(env->dynarec_test_end && addr>=env->dynarec_test_start && addr<env->dynarec_test_end)
+        return 0;
+    if(env->dynarec_trace && trace_end && addr>=trace_start && addr<trace_end)
+        return 0;
+    #endif
+    return 1;
 }

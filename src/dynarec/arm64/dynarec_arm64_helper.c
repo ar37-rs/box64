@@ -560,65 +560,73 @@ void jump_to_epilog(dynarec_arm_t* dyn, uintptr_t ip, int reg, int ninst)
         GETIP_(ip);
     }
     NOTEST(x2);
-    TABLE64(x2, (uintptr_t)arm64_epilog);
+    TABLE64C(x2, const_epilog);
     SMEND();
     BR(x2);
 }
 
+
+static int indirect_lookup(dynarec_arm_t* dyn, int ninst, int is32bits, int s1, int s2)
+{
+    MAYUSE(dyn);
+
+    if (!is32bits) {
+        // check higher 48bits
+        LSRx_IMM(s1, xRIP, 48);
+        CBNZw(s1, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
+        // load table
+        MOV64x(s2, getConst(const_jmptbl48));    // this is a static value, so will be a low address
+        #ifdef JMPTABL_SHIFT4
+        UBFXx(s1, xRIP, JMPTABL_START3, JMPTABL_SHIFT3);
+        LDRx_REG_LSL3(s2, s2, s1);
+        #endif
+        UBFXx(s1, xRIP, JMPTABL_START2, JMPTABL_SHIFT2);
+        LDRx_REG_LSL3(s2, s2, s1);
+    } else {
+        // check higher 32bits disabled
+        // LSRx_IMM(s1, xRIP, 32);
+        // CBNZw(s1, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
+        // load table
+        TABLE64C(s2, const_jmptbl32);
+        #ifdef JMPTABL_SHIFT4
+        UBFXx(s1, xRIP, JMPTABL_START2, JMPTABL_SHIFT2);
+        LDRx_REG_LSL3(s2, s2, s1);
+        #endif
+    }
+    UBFXx(s1, xRIP, JMPTABL_START1, JMPTABL_SHIFT1);
+    LDRx_REG_LSL3(s2, s2, s1);
+    UBFXx(s1, xRIP, JMPTABL_START0, JMPTABL_SHIFT0);
+    LDRx_REG_LSL3(s1, s2, s1);
+    return s1;
+}
+
 void jump_to_next(dynarec_arm_t* dyn, uintptr_t ip, int reg, int ninst, int is32bits)
 {
-    MAYUSE(dyn); MAYUSE(ninst);
+    MAYUSE(dyn);
+    MAYUSE(ninst);
     MESSAGE(LOG_DUMP, "Jump to next\n");
 
-    if(is32bits)
+    if (is32bits)
         ip &= 0xffffffffLL;
 
     SMEND();
-    if(reg) {
-        if(reg!=xRIP) {
+
+    int dest;
+    if (reg) {
+        if (reg != xRIP) {
             MOVx_REG(xRIP, reg);
         }
         NOTEST(x2);
-        if(!is32bits) {
-            // check higher 48bits
-            LSRx_IMM(x2, xRIP, 48);
-            CBNZw(x2, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
-            // load table
-            uintptr_t tbl = getJumpTable48();   // this is a static value, so will be a low address
-            MOV64x(x3, tbl);
-            #ifdef JMPTABL_SHIFT4
-            UBFXx(x2, xRIP, JMPTABL_START3, JMPTABL_SHIFT3);
-            LDRx_REG_LSL3(x3, x3, x2);
-            #endif
-            UBFXx(x2, xRIP, JMPTABL_START2, JMPTABL_SHIFT2);
-            LDRx_REG_LSL3(x3, x3, x2);
-            UBFXx(x2, xRIP, JMPTABL_START1, JMPTABL_SHIFT1);
-            LDRx_REG_LSL3(x3, x3, x2);
-            UBFXx(x2, xRIP, JMPTABL_START0, JMPTABL_SHIFT0);
-            LDRx_REG_LSL3(x2, x3, x2);
-        } else {
-            // check higher 32bits disabled
-            //LSRx_IMM(x2, xRIP, 32);
-            //CBNZw(x2, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
-            // load table
-            uintptr_t tbl = getJumpTable32();   // this will not be a low address
-            TABLE64(x3, tbl);
-            #ifdef JMPTABL_SHIFT4
-            UBFXx(x2, xRIP, JMPTABL_START2, JMPTABL_SHIFT2);
-            LDRx_REG_LSL3(x3, x3, x2);
-            #endif
-            UBFXx(x2, xRIP, JMPTABL_START1, JMPTABL_SHIFT1);
-            LDRx_REG_LSL3(x3, x3, x2);
-            UBFXx(x2, xRIP, JMPTABL_START0, JMPTABL_SHIFT0);
-            LDRx_REG_LSL3(x2, x3, x2);
-        }
+        dest = indirect_lookup(dyn, ninst, is32bits, x2, x3);
     } else {
         NOTEST(x2);
         uintptr_t p = getJumpTableAddress64(ip);
         MAYUSE(p);
-        MOV64x(x3, p);
+        if(dyn->need_reloc) AddRelocTable64JmpTbl(dyn, ninst, ip, STEP);
+        TABLE64_(x3, p);
         GETIP_(ip);
         LDRx_U12(x2, x3, 0);
+        dest = x2;
     }
     if(reg!=x1) {
         MOVx_REG(x1, xRIP);
@@ -626,12 +634,12 @@ void jump_to_next(dynarec_arm_t* dyn, uintptr_t ip, int reg, int ninst, int is32
     CLEARIP();
     #ifdef HAVE_TRACE
     //MOVx(x3, 15);    no access to PC reg
-    BLR(x2); // save LR...
+    BLR(dest); // save LR...
     #else
     if (dyn->insts[ninst].x64.has_callret) {
-        BLR(x2); // save LR...
+        BLR(dest); // save LR...
     } else {
-        BR(x2);
+        BR(dest);
     }
     #endif
 }
@@ -653,43 +661,11 @@ void ret_to_epilog(dynarec_arm_t* dyn, uintptr_t ip, int ninst, rex_t rex)
         SUBx_U12(xSP, xSavedSP, 16);
     }
     NOTEST(x2);
-    if(!rex.is32bits) {
-        // check higher 48bits
-        LSRx_IMM(x2, xRIP, 48);
-        CBNZw(x2, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
-        // load table
-        uintptr_t tbl = getJumpTable48();
-        MOV64x(x3, tbl);
-        #ifdef JMPTABL_SHIFT4
-        UBFXx(x2, xRIP, JMPTABL_START3, JMPTABL_SHIFT3);
-        LDRx_REG_LSL3(x3, x3, x2);
-        #endif
-        UBFXx(x2, xRIP, JMPTABL_START2, JMPTABL_SHIFT2);
-        LDRx_REG_LSL3(x3, x3, x2);
-        UBFXx(x2, xRIP, JMPTABL_START1, JMPTABL_SHIFT1);
-        LDRx_REG_LSL3(x3, x3, x2);
-        UBFXx(x2, xRIP, JMPTABL_START0, JMPTABL_SHIFT0);
-        LDRx_REG_LSL3(x2, x3, x2);
-    } else {
-        // check higher 32bits disabled
-        //LSRx_IMM(x2, xRIP, 32);
-        //CBNZw(x2, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
-        // load table
-        uintptr_t tbl = getJumpTable32();
-        TABLE64(x3, tbl);
-        #ifdef JMPTABL_SHIFT4
-        UBFXx(x2, xRIP, JMPTABL_START2, JMPTABL_SHIFT2);
-        LDRx_REG_LSL3(x3, x3, x2);
-        #endif
-        UBFXx(x2, xRIP, JMPTABL_START1, JMPTABL_SHIFT1);
-        LDRx_REG_LSL3(x3, x3, x2);
-        UBFXx(x2, xRIP, JMPTABL_START0, JMPTABL_SHIFT0);
-        LDRx_REG_LSL3(x2, x3, x2);
-    }
+    int dest = indirect_lookup(dyn, ninst, rex.is32bits, x2, x3);
     #ifdef HAVE_TRACE
-    BLR(x2);
+    BLR(dest);
     #else
-    BR(x2);
+    BR(dest);
     #endif
     CLEARIP();
 }
@@ -717,43 +693,11 @@ void retn_to_epilog(dynarec_arm_t* dyn, uintptr_t ip, int ninst, rex_t rex, int 
         SUBx_U12(xSP, xSavedSP, 16);
     }
     NOTEST(x2);
-    if(!rex.is32bits) {
-        // check higher 48bits
-        LSRx_IMM(x2, xRIP, 48);
-        CBNZw(x2, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
-        // load table
-        uintptr_t tbl = getJumpTable48();
-        MOV64x(x3, tbl);
-        #ifdef JMPTABL_SHIFT4
-        UBFXx(x2, xRIP, JMPTABL_START3, JMPTABL_SHIFT3);
-        LDRx_REG_LSL3(x3, x3, x2);
-        #endif
-        UBFXx(x2, xRIP, JMPTABL_START2, JMPTABL_SHIFT2);
-        LDRx_REG_LSL3(x3, x3, x2);
-        UBFXx(x2, xRIP, JMPTABL_START1, JMPTABL_SHIFT1);
-        LDRx_REG_LSL3(x3, x3, x2);
-        UBFXx(x2, xRIP, JMPTABL_START0, JMPTABL_SHIFT0);
-        LDRx_REG_LSL3(x2, x3, x2);
-    } else {
-        // check higher 32bits disbaled
-        //LSRx_IMM(x2, xRIP, 32);
-        //CBNZw(x2, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
-        // load table
-        uintptr_t tbl = getJumpTable32();
-        TABLE64(x3, tbl);
-        #ifdef JMPTABL_SHIFT4
-        UBFXx(x2, xRIP, JMPTABL_START2, JMPTABL_SHIFT2);
-        LDRx_REG_LSL3(x3, x3, x2);
-        #endif
-        UBFXx(x2, xRIP, JMPTABL_START1, JMPTABL_SHIFT1);
-        LDRx_REG_LSL3(x3, x3, x2);
-        UBFXx(x2, xRIP, JMPTABL_START0, JMPTABL_SHIFT0);
-        LDRx_REG_LSL3(x2, x3, x2);
-    }
+    int dest = indirect_lookup(dyn, ninst, rex.is32bits, x2, x3);
     #ifdef HAVE_TRACE
-    BLR(x2);
+    BLR(dest);
     #else
-    BR(x2);
+    BR(dest);
     #endif
     CLEARIP();
 }
@@ -807,12 +751,12 @@ void iret_to_epilog(dynarec_arm_t* dyn, uintptr_t ip, int ninst, int is32bits, i
     MOVx_REG(xRSP, x3);
     MARKSEG;
     // Ret....
-    MOV64x(x2, (uintptr_t)arm64_epilog);  // epilog on purpose, CS might have changed!
+    MOV64x(x2, getConst(const_epilog));  // epilog on purpose, CS might have changed!
     BR(x2);
     CLEARIP();
 }
 
-void call_c(dynarec_arm_t* dyn, int ninst, void* fnc, int reg, int ret, int saveflags, int savereg)
+void call_c(dynarec_arm_t* dyn, int ninst, arm64_consts_t fnc, int reg, int ret, int saveflags, int savereg)
 {
     MAYUSE(fnc);
     #if STEP == 0
@@ -835,7 +779,7 @@ void call_c(dynarec_arm_t* dyn, int ninst, void* fnc, int reg, int ret, int save
     #ifdef _WIN32
     LDRx_U12(xR8, xEmu, offsetof(x64emu_t, win64_teb));
     #endif
-    TABLE64(reg, (uintptr_t)fnc);
+    TABLE64C(reg, fnc);
     BLR(reg);
     if(ret>=0) {
         MOVx_REG(ret, xEmu);
@@ -866,7 +810,7 @@ void call_c(dynarec_arm_t* dyn, int ninst, void* fnc, int reg, int ret, int save
     //SET_NODF();
 }
 
-void call_i(dynarec_arm_t* dyn, int ninst, void* fnc)
+void call_i(dynarec_arm_t* dyn, int ninst, arm64_consts_t fnc)
 {
     MAYUSE(fnc);
     #if STEP == 0
@@ -887,7 +831,7 @@ void call_i(dynarec_arm_t* dyn, int ninst, void* fnc)
     #ifdef _WIN32
     LDRx_U12(xR8, xEmu, offsetof(x64emu_t, win64_teb));
     #endif
-    TABLE64(x87pc, (uintptr_t)fnc);
+    TABLE64C(x87pc, fnc);
     BLR(x87pc);
     LDPx_S7_postindex(xEmu, x1, xSP, 16);
     LDPx_S7_postindex(x2, x3, xSP, 16);
@@ -936,7 +880,8 @@ void call_n(dynarec_arm_t* dyn, int ninst, void* fnc, int w)
     MOVx_REG(x4, xR8);
     MOVx_REG(x5, xR9);
     // native call
-    TABLE64(16, (uintptr_t)fnc);    // using x16 as scratch regs for call address
+    // fnc is indirect, to help with relocation (but PltResolver might be an issue here)
+    TABLE64(16, *(uintptr_t*)fnc);    // using x16 as scratch regs for call address
     BLR(16);
     // put return value in x64 regs
     if(w>0) {
@@ -964,6 +909,9 @@ void grab_segdata(dynarec_arm_t* dyn, uintptr_t addr, int ninst, int reg, int se
     MESSAGE(LOG_DUMP, "Get %s Offset\n", (segment==_FS)?"FS":"GS");
     int t2 = x4;
     if(reg==t2) ++t2;
+    #ifdef _WIN32
+    LDRx_U12(reg, xEmu, offsetof(x64emu_t, segs_offs[segment]));
+    #else
     LDRw_U12(t2, xEmu, offsetof(x64emu_t, segs_serial[segment]));
     /*if(segment==_GS) {
         LDRx_U12(reg, xEmu, offsetof(x64emu_t, segs_offs[segment]));
@@ -976,8 +924,9 @@ void grab_segdata(dynarec_arm_t* dyn, uintptr_t addr, int ninst, int reg, int se
         CBZw_MARKSEG(t2);
     }
     MOVZw(x1, segment);
-    call_c(dyn, ninst, GetSegmentBaseEmu, t2, reg, 1, 0);
+    call_c(dyn, ninst, const_getsegmentbase, t2, reg, 1, 0);
     MARKSEG;
+    #endif
     MESSAGE(LOG_DUMP, "----%s Offset\n", (segment==_FS)?"FS":"GS");
 }
 
@@ -2229,7 +2178,7 @@ static void loadCache(dynarec_arm_t* dyn, int ninst, int stack_cnt, int s1, int 
             break;
         case NEON_CACHE_YMMR:
         case NEON_CACHE_YMMW:
-            if(dyn->insts[i2].n.xmm_unneeded&(1<<n)) {
+            if(dyn->insts[i2].n.ymm_unneeded&(1<<n)) {
                 MESSAGE(LOG_DUMP, "\t  - ignoring unneeded %s\n", getCacheName(t, n));
             } else {
                 MESSAGE(LOG_DUMP, "\t  - Loading %s\n", getCacheName(t, n));
@@ -2296,7 +2245,7 @@ static void unloadCache(dynarec_arm_t* dyn, int ninst, int stack_cnt, int s1, in
             }
             break;
         case NEON_CACHE_YMMW:
-            if(dyn->insts[i2].n.ymm_unneeded&(1<<i)) {
+            if(dyn->insts[i2].n.ymm_unneeded&(1<<n)) {
                 MESSAGE(LOG_DUMP, "\t  - ignoring unneeded %s\n", getCacheName(t, n));
             } else {
                 MESSAGE(LOG_DUMP, "\t  - Unloading %s\n", getCacheName(t, n));
@@ -2573,7 +2522,7 @@ static void flagsCacheTransform(dynarec_arm_t* dyn, int ninst, int s1)
         }
         if(dyn->insts[ninst].need_nat_flags)
             MRS_nzcv(s1);
-        CALL_(UpdateFlags, -1, s1);
+        CALL_(const_updateflags, -1, s1);
         if(dyn->insts[ninst].need_nat_flags)
             MSR_nzcv(s1);
         MARKF2;
@@ -2645,7 +2594,7 @@ static void nativeFlagsTransform(dynarec_arm_t* dyn, int ninst, int s1, int s2)
     }
     // special case for NF_CF changing state
     if((flags_before&NF_CF) && (flags_after&NF_CF) && (nc_before!=nc_after)) {
-        if(arm64_flagm && !mrs) {
+        if(cpuext.flagm && !mrs) {
             CFINV();
         } else {
             GO_MRS(s2);

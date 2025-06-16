@@ -125,7 +125,8 @@ extern char* ftrace_name;
     BOOLEAN(BOX64_X11GLX, x11glx, 1, 0)                                       \
     BOOLEAN(BOX64_X11SYNC, x11sync, 0, 0)                                     \
     BOOLEAN(BOX64_X11THREADS, x11threads, 0, 0)                               \
-    BOOLEAN(BOX64_X87_NO80BITS, x87_no80bits, 0, 1)
+    BOOLEAN(BOX64_X87_NO80BITS, x87_no80bits, 0, 1)                           \
+    BOOLEAN(BOX64_DYNACACHE, dynacache, 0, 0)                                 \
 
 #ifdef ARM64
 #define ENVSUPER2() \
@@ -193,6 +194,8 @@ typedef struct box64env_s {
     uint64_t is_dynarec_perf_map_fd_overridden : 1;
 } box64env_t;
 
+typedef struct mmaplist_s mmaplist_t;
+
 void InitializeEnvFiles();
 void ApplyEnvFileEntry(const char* name);
 const char* GetLastApplyEntryName();
@@ -204,5 +207,7 @@ void RemoveMapping(uintptr_t addr, size_t length);
 box64env_t* GetCurEnvByAddr(uintptr_t addr);
 int IsAddrFileMapped(uintptr_t addr, const char** filename, uintptr_t* start);
 size_t SizeFileMapped(uintptr_t addr);
+mmaplist_t* GetMmaplistByAddr(uintptr_t addr);
+int IsAddrNeedReloc(uintptr_t addr);
 
 #endif // __ENV_H

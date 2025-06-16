@@ -2722,6 +2722,18 @@ EXPORT int32_t my___cxa_thread_atexit_impl(x64emu_t* emu, void* dtor, void* obj,
     return 0;
 }
 
+EXPORT int32_t my_delete_module(x64emu_t* emu, const char* name, unsigned int flags)
+{
+    (void)emu;
+    return syscall(__NR_delete_module, name, flags);
+}
+
+EXPORT int32_t my_init_module(x64emu_t* emu, void* module_image, unsigned long size, const char* param_values)
+{
+    (void)emu;
+    return syscall(__NR_init_module, module_image, size, param_values);
+}
+
 EXPORT int32_t my___register_atfork(x64emu_t *emu, void* prepare, void* parent, void* child, void* handle)
 {
     (void)emu;
@@ -3056,7 +3068,7 @@ EXPORT void* my_mmap64(x64emu_t* emu, void *addr, size_t length, int prot, int f
             }
         }
         // hack to capture full size of the mmap done by wine
-        if(emu && (fd==-1) && (flags==(MAP_PRIVATE|MAP_ANON))) {
+        if(emu && (fd==-1) && (flags&(MAP_PRIVATE|MAP_ANON))==(MAP_PRIVATE|MAP_ANON)) {
             last_mmap_addr[last_mmap_idx] = ret;
             last_mmap_len[last_mmap_idx] = length;
         } else {

@@ -25,6 +25,7 @@ string(REPLACE "," ";" INTERPRETER "${INTERPRETER_STR}")
 
 set(WOW64_MAIN_SRC
     "${BOX64_ROOT}/wine/common/crt.c"
+    "${BOX64_ROOT}/wine/common/wrt.c"
     "${BOX64_ROOT}/wine/wow64/wowbox64.c"
 )
 
@@ -70,10 +71,12 @@ set(WOW64_BOX64CPU_SRC
     "${BOX64_ROOT}/src/dynarec/arm64/dynarec_arm64_arch.c"
     "${BOX64_ROOT}/src/dynarec/arm64/dynarec_arm64_functions.c"
     "${BOX64_ROOT}/src/dynarec/arm64/dynarec_arm64_jmpnext.c"
+    "${BOX64_ROOT}/src/dynarec/arm64/dynarec_arm64_consts.c"
     "${BOX64_ROOT}/src/dynarec/dynablock.c"
     "${BOX64_ROOT}/src/dynarec/dynarec_native_functions.c"
     "${BOX64_ROOT}/src/dynarec/dynarec_native.c"
     "${BOX64_ROOT}/src/dynarec/dynarec.c"
+    "${BOX64_ROOT}/src/dynarec/dynacache_reloc.c"
     "${BOX64_ROOT}/src/emu/x64compstrings.c"
     "${BOX64_ROOT}/src/emu/x64emu.c"
     "${BOX64_ROOT}/src/emu/x64primop.c"
@@ -84,6 +87,8 @@ set(WOW64_BOX64CPU_SRC
     "${BOX64_ROOT}/src/emu/x87emu_private.c"
     "${BOX64_ROOT}/src/os/backtrace.c"
     "${BOX64_ROOT}/src/os/os_wine.c"
+    "${BOX64_ROOT}/src/os/hostext_common.c"
+    "${BOX64_ROOT}/src/os/hostext_wine.c"
     "${BOX64_ROOT}/src/os/freq_wine.c"
     "${BOX64_ROOT}/src/os/symbolfuncs_wine.c"
     "${BOX64_ROOT}/src/os/emit_signal_wine.c"
@@ -136,7 +141,12 @@ import_dll(wow64)
 # always enable DynaRec, only supports ARM64 for now.
 add_compile_definitions(DYNAREC ARM64)
 
-target_link_options(wowbox64 PRIVATE -nostdlib -nodefaultlibs -lclang_rt.builtins-aarch64 -Wl,--image-base,0x004c0000)
+target_compile_options(wowbox64 PRIVATE -Wno-inconsistent-dllimport)
+target_link_options(wowbox64 PRIVATE -nostdlib -nodefaultlibs 
+    -lclang_rt.builtins-aarch64
+    -Wl,--image-base,0x004c0000
+    -Wl,/ignore:4217 # LNK4217: locally defined symbol imported
+)
 set_target_properties(wowbox64 PROPERTIES
     PREFIX ""
     SUFFIX ".dll"
