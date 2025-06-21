@@ -118,7 +118,7 @@ uintptr_t geted(dynarec_rv64_t* dyn, uintptr_t addr, int ninst, uint8_t nextop, 
                 GETIP(addr + delta, scratch);
                 ADDI(ret, xRIP, tmp);
                 SCRATCH_USAGE(1);
-            } else if (tmp + addr + delta < 0x100000000LL) {
+            } else if (tmp + addr + delta < 0x80000000LL && !dyn->need_reloc) {
                 MOV64x(ret, tmp + addr + delta);
             } else {
                 if (adj) {
@@ -557,7 +557,7 @@ void jump_to_epilog(dynarec_rv64_t* dyn, uintptr_t ip, int reg, int ninst)
     } else {
         GETIP_(ip, x2);
     }
-    TABLE64(x2, (uintptr_t)rv64_epilog);
+    TABLE64C(x2, const_epilog);
     SMEND();
     BR(x2);
 }
@@ -576,7 +576,7 @@ void jump_to_epilog_fast(dynarec_rv64_t* dyn, uintptr_t ip, int reg, int ninst)
     } else {
         GETIP_(ip, x2);
     }
-    TABLE64(x2, (uintptr_t)rv64_epilog_fast);
+    TABLE64C(x2, const_epilog_fast);
     SMEND();
     BR(x2);
 }
@@ -591,13 +591,15 @@ static int indirect_lookup(dynarec_rv64_t* dyn, int ninst, int is32bits, int s1,
         if (!is32bits) {
             SRLI(s1, xRIP, 48);
             BNEZ_safe(s1, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
-            uintptr_t tbl = getJumpTable48();
-            MOV64x(s2, tbl);
+            if (dyn->need_reloc) {
+                TABLE64C(s2, const_jmptbl48);
+            } else {
+                MOV64x(s2, getConst(const_jmptbl48));
+            }
             TH_EXTU(s1, xRIP, JMPTABL_START2 + JMPTABL_SHIFT2 - 1, JMPTABL_START2);
             TH_LRD(s2, s2, s1, 3);
         } else {
-            uintptr_t tbl = getJumpTable32();
-            TABLE64(s2, tbl);
+            TABLE64C(s2, const_jmptbl32);
         }
         TH_EXTU(s1, xRIP, JMPTABL_START1 + JMPTABL_SHIFT1 - 1, JMPTABL_START1);
         TH_LRD(s2, s2, s1, 3);
@@ -607,14 +609,12 @@ static int indirect_lookup(dynarec_rv64_t* dyn, int ninst, int is32bits, int s1,
         if (!is32bits) {
             SRLI(s1, xRIP, 48);
             BNEZ_safe(s1, (intptr_t)dyn->jmp_next - (intptr_t)dyn->block);
-            uintptr_t tbl = getJumpTable48();
-            MOV64x(s2, tbl);
+            MOV64x(s2, getConst(const_jmptbl48));
             SRLI(s1, xRIP, JMPTABL_START2);
             ADDSL(s2, s2, s1, 3, s1);
             LD(s2, s2, 0);
         } else {
-            uintptr_t tbl = getJumpTable32();
-            TABLE64(s2, tbl);
+            TABLE64C(s2, const_jmptbl32);
         }
         MOV64x(x4, JMPTABLE_MASK1 << 3);
         SRLI(s1, xRIP, JMPTABL_START1 - 3);
@@ -653,7 +653,8 @@ void jump_to_next(dynarec_rv64_t* dyn, uintptr_t ip, int reg, int ninst, int is3
         uintptr_t p = getJumpTableAddress64(ip);
         MAYUSE(p);
         GETIP_(ip, x3);
-        TABLE64(x3, p);
+        if (dyn->need_reloc) AddRelocTable64JmpTbl(dyn, ninst, ip, STEP);
+        TABLE64_(x3, p);
         LD(x2, x3, 0);
         dest = x2;
     }
@@ -759,13 +760,17 @@ void iret_to_epilog(dynarec_rv64_t* dyn, uintptr_t ip, int ninst, int is64bits)
     // set new RSP
     MV(xRSP, x3);
     // Ret....
-    MOV64x(x2, (uintptr_t)rv64_epilog); // epilog on purpose, CS might have changed!
+    // epilog on purpose, CS might have changed!
+    if (dyn->need_reloc)
+        TABLE64C(x2, const_epilog);
+    else
+        MOV64x(x2, getConst(const_epilog));
     SMEND();
     BR(x2);
     CLEARIP();
 }
 
-void call_c(dynarec_rv64_t* dyn, int ninst, void* fnc, int reg, int ret, int saveflags, int savereg, int arg1, int arg2, int arg3, int arg4, int arg5, int arg6)
+void call_c(dynarec_rv64_t* dyn, int ninst, rv64_consts_t fnc, int reg, int ret, int saveflags, int savereg, int arg1, int arg2, int arg3, int arg4, int arg5, int arg6)
 {
     MAYUSE(fnc);
     if (savereg == 0)
@@ -787,7 +792,7 @@ void call_c(dynarec_rv64_t* dyn, int ninst, void* fnc, int reg, int ret, int sav
         STORE_REG(RAX);
         SD(xRIP, xEmu, offsetof(x64emu_t, ip));
     }
-    TABLE64(reg, (uintptr_t)fnc);
+    TABLE64C(reg, fnc);
     MV(A0, xEmu);
     if (arg1) MV(A1, arg1);
     if (arg2) MV(A2, arg2);
@@ -845,7 +850,13 @@ void call_n(dynarec_rv64_t* dyn, int ninst, void* fnc, int w)
         }
     }
     // native call
-    TABLE64(x3, (uintptr_t)fnc);
+    if (dyn->need_reloc) {
+        // fnc is indirect, to help with relocation (but PltResolver might be an issue here)
+        TABLE64(x3, (uintptr_t)fnc);
+        LD(x3, x3, 0);
+    } else {
+        TABLE64_(x3, *(uintptr_t*)fnc); // using x16 as scratch regs for call address
+    }
     JALR(xRA, x3);
     // put return value in x64 regs
     if (w > 0) {
@@ -884,7 +895,7 @@ void grab_segdata(dynarec_rv64_t* dyn, uintptr_t addr, int ninst, int reg, int s
         CBZ_MARKSEG(t1);
     }
     MOV64x(x1, segment);
-    call_c(dyn, ninst, GetSegmentBaseEmu, t2, reg, 0, xFlags, x1, 0, 0, 0, 0, 0);
+    call_c(dyn, ninst, const_getsegmentbase, t2, reg, 0, xFlags, x1, 0, 0, 0, 0, 0);
     MARKSEG;
     MESSAGE(LOG_DUMP, "----%s Offset\n", (segment == _FS) ? "FS" : "GS");
 }
@@ -2784,7 +2795,7 @@ static void flagsCacheTransform(dynarec_rv64_t* dyn, int ninst, int s1)
             j64 = (GETMARKF2) - (dyn->native_size);
             BEQZ(s1, j64);
         }
-        CALL_(UpdateFlags, -1, 0, 0, 0);
+        CALL_(const_updateflags, -1, 0, 0, 0);
         MARKF2;
     }
 }

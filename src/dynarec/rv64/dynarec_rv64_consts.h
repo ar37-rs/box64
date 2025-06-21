@@ -1,8 +1,8 @@
-#ifndef __DYNAREC_ARM64_CONSTS__
-#define __DYNAREC_ARM64_CONSTS__
+#ifndef __DYNAREC_RV64_CONSTS__
+#define __DYNAREC_RV64_CONSTS__
 #include <stdint.h>
 
-typedef enum arm64_consts_s {
+typedef enum rv64_consts_s {
     const_none,
     const_daa8,
     const_das8,
@@ -17,6 +17,8 @@ typedef enum arm64_consts_s {
     const_native_int,
     const_native_div0,
     const_native_clflush,
+    const_native_fprem,
+    const_native_fprem1,
     const_native_frstor16,
     const_native_fsave16,
     const_native_fsave,
@@ -50,14 +52,22 @@ typedef enum arm64_consts_s {
     const_int3,
     const_x86syscall,
     const_x64syscall,
+    const_rcl8,
     const_rcl16,
     const_rcl32,
     const_rcl64,
+    const_rcr8,
     const_rcr16,
     const_rcr32,
     const_rcr64,
+    const_rol8,
+    const_rol16,
+    const_ror8,
+    const_ror16,
     const_div64,
+    const_div8,
     const_idiv64,
+    const_idiv8,
     const_random32,
     const_random64,
     const_readtsc,
@@ -66,6 +76,8 @@ typedef enum arm64_consts_s {
     const_getsegmentbase,
     const_updateflags,
     const_reset_fpu,
+    const_sha1nexte,
+    const_sha1msg1,
     const_sha1msg2,
     const_sha1rnds4,
     const_sha256msg1,
@@ -86,24 +98,20 @@ typedef enum arm64_consts_s {
     const_x64test_step,
     const_printtrace,
     const_epilog,
+    const_epilog_fast,
     const_jmptbl32,
     const_jmptbl48,
     const_jmptbl64,
     const_context,
-    const_8b_m7_m6_m5_m4_m3_m2_m1_0,
-    const_8b_7_6_5_4_3_2_1_0,
-    const_8b_15_14_13_12_11_10_9_8,
-    const_4f_m1_1_m1_1,
-    const_2d_m1_1,
-    const_4f_1_m1_1_m1,
-    const_2d_1_m1,
+    const_lead0tab,
+    const_deBruijn64tab,
 
     const_last
-} arm64_consts_t;
+} rv64_consts_t;
 
-uintptr_t getConst(arm64_consts_t which);
+uintptr_t getConst(rv64_consts_t which);
 
 // temporary define...
 #define const_PrintTrace const_printtrace
 
-#endif //__DYNAREC_ARM64_CONSTS__
+#endif //__DYNAREC_RV64_CONSTS__
