@@ -45,6 +45,7 @@
 #() IFI
 #() IFf
 #() IFd
+#() IFD
 #() IFp
 #() IFS
 #() CFv
@@ -3399,7 +3400,6 @@
 #() iFpppppppppppp
 #() UFbCuuWWwwCCup
 #() UFbuuuWWWWWWWW
-#() LFpLiiuuuiupLp
 #() pFEpLiiuuLipii
 #() pFEppppppppppp
 #() pFWWiCCCCiipup
@@ -3425,6 +3425,7 @@
 #() uFippuuuulllipp
 #() uFpppppuupppppp
 #() UFbCuuwwWWWWuup
+#() LFEpLiiuuuiupLp
 #() pFppLppppiiLpip
 #() pFpppppppuipppp
 #() pFppppppppppppp
@@ -4815,6 +4816,7 @@ wrappedlibc:
   - vsnprintf
   - vswprintf
 - iFppii:
+  - nftw
   - nftw64
 - iFpppp:
   - __register_atfork
@@ -5480,6 +5482,8 @@ wrappedlibx11:
   - XCheckIfEvent
   - XIfEvent
   - XPeekIfEvent
+- pFpppp:
+  - XOpenIM
 - iFppppp:
   - XQueryExtension
 - iFpppppp:
@@ -5493,6 +5497,8 @@ wrappedlibx11:
   - XCreateImage
 - pFpLiiuuLipii:
   - XGetSubImage
+- LFpLiiuuuiupLp:
+  - XCreateWindow
 wrappedlibx11xcb:
 - pFp:
   - XGetXCBConnection

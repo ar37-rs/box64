@@ -1233,13 +1233,9 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
             GETEX(v1, 0, 0);
             // FMIN/FMAX wll not copy the value if v0[x] is NaN
             // but x86 will copy if either v0[x] or v1[x] is NaN, so lets force a copy if source is NaN
-            if(BOX64ENV(dynarec_fastnan)) {
-                VFMINQS(v0, v0, v1);
-            } else {
-                q0 = fpu_get_scratch(dyn, ninst);
-                VFCMGTQS(q0, v1, v0);   // 0 is NaN or v1 GT v0, so invert mask for copy
-                VBIFQ(v0, v1, q0);
-            }
+            q0 = fpu_get_scratch(dyn, ninst);
+            VFCMGTQS(q0, v1, v0);   // 0 is NaN or v1 GT v0, so invert mask for copy
+            VBIFQ(v0, v1, q0);
             break;
         case 0x5E:
             INST_NAME("DIVPS Gx, Ex");
@@ -1268,13 +1264,9 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
             GETEX(v1, 0, 0);
             // FMIN/FMAX wll not copy the value if v0[x] is NaN
             // but x86 will copy if either v0[x] or v1[x] is NaN, or if values are equals, so lets force a copy if source is NaN
-            if(BOX64ENV(dynarec_fastnan)) {
-                VFMAXQS(v0, v0, v1);
-            } else {
-                q0 = fpu_get_scratch(dyn, ninst);
-                VFCMGTQS(q0, v0, v1);   // 0 is NaN or v0 GT v1, so invert mask for copy
-                VBIFQ(v0, v1, q0);
-            }
+            q0 = fpu_get_scratch(dyn, ninst);
+            VFCMGTQS(q0, v0, v1);   // 0 is NaN or v0 GT v1, so invert mask for copy
+            VBIFQ(v0, v1, q0);
             break;
         case 0x60:
             INST_NAME("PUNPCKLBW Gm,Em");
@@ -1673,7 +1665,6 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
                 j64 = (uint32_t)(addr+i32_);                            \
             else                                                        \
                 j64 = addr+i32_;                                        \
-            BARRIER(BARRIER_MAYBE);                                     \
             JUMP(j64, 1);                                               \
             GETFLAGS;                                                   \
             if(dyn->insts[ninst].x64.jmp_insts==-1 ||                   \
@@ -1918,7 +1909,7 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
                     case 0:
                         INST_NAME("FXSAVE Ed");
                         MESSAGE(LOG_DUMP, "Need Optimization (FXSAVE)\n");
-                        fpu_purgecache(dyn, ninst, 0, x1, x2, x3);
+                        BARRIER(BARRIER_FLOAT);
                         addr = geted(dyn, addr, ninst, nextop, &ed, x1, &fixedaddress, NULL, 0, 0, rex, NULL, 0, 0);
                         if(ed!=x1) {MOVx_REG(x1, ed);}
                         CALL(rex.is32bits?const_fpu_fxsave32:const_fpu_fxsave64, -1);
@@ -1926,7 +1917,7 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
                     case 1:
                         INST_NAME("FXRSTOR Ed");
                         MESSAGE(LOG_DUMP, "Need Optimization (FXRSTOR)\n");
-                        fpu_purgecache(dyn, ninst, 0, x1, x2, x3);
+                        BARRIER(BARRIER_FLOAT);
                         addr = geted(dyn, addr, ninst, nextop, &ed, x1, &fixedaddress, NULL, 0, 0, rex, NULL, 0, 0);
                         if(ed!=x1) {MOVx_REG(x1, ed);}
                         CALL(rex.is32bits?const_fpu_fxrstor32:const_fpu_fxrstor64, -1);
@@ -1986,7 +1977,7 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
                     case 4:
                         INST_NAME("XSAVE Ed");
                         MESSAGE(LOG_DUMP, "Need Optimization (XSAVE)\n");
-                        fpu_purgecache(dyn, ninst, 0, x1, x2, x3);
+                        BARRIER(BARRIER_FLOAT);
                         addr = geted(dyn, addr, ninst, nextop, &ed, x1, &fixedaddress, NULL, 0, 0, rex, NULL, 0, 0);
                         if(ed!=x1) {MOVx_REG(x1, ed);}
                         MOV32w(x2, rex.w?0:1);
@@ -1995,7 +1986,7 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
                     case 5:
                         INST_NAME("XRSTOR Ed");
                         MESSAGE(LOG_DUMP, "Need Optimization (XRSTOR)\n");
-                        fpu_purgecache(dyn, ninst, 0, x1, x2, x3);
+                        BARRIER(BARRIER_FLOAT);
                         addr = geted(dyn, addr, ninst, nextop, &ed, x1, &fixedaddress, NULL, 0, 0, rex, NULL, 0, 0);
                         if(ed!=x1) {MOVx_REG(x1, ed);}
                         MOV32w(x2, rex.w?0:1);

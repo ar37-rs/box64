@@ -186,6 +186,11 @@ GOW(creat64, iFpu)
 GO(ctermid, pFp)
 GO(ctime, pFp)
 GO(ctime_r, pFpp)
+#ifdef ANDROID
+DATA(_ctype_, 8)
+#else
+//DATA(_ctype_, 8) //is it even used on Linux?
+#endif
 //DATA(__ctype32_b, 
 //DATA(__ctype32_tolower, 
 //DATA(__ctype32_toupper, 
@@ -1365,7 +1370,7 @@ GO(netname2user, iFppppp)
 GO(__newlocale, pFipp)
 GOW(newlocale, pFipp)
 //GO(nfsservctl, 
-//GOM(nftw, iFppii)
+GOM(nftw, iFEppii)
 GOM(nftw64, iFEppii)
 GOW(ngettext, pFppL)
 GO(nice, iFi)

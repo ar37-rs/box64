@@ -182,7 +182,6 @@ int is_ymm_to_keep(dynarec_arm_t* dyn, int reg, int k1, int k2, int k3)
 // Reset fpu regs counter
 static void fpu_reset_reg_neoncache(neoncache_t* n)
 {
-    n->fpu_reg = 0;
     for (int i=0; i<32; ++i) {
         n->fpuused[i]=0;
         n->neoncache[i].v = 0;
@@ -563,7 +562,6 @@ void neoncacheUnwind(neoncache_t* cache)
     // And now, rebuild the x87cache info with neoncache
     cache->mmxcount = 0;
     cache->fpu_scratch = 0;
-    cache->fpu_reg = 0;
     for(int i=0; i<8; ++i) {
         cache->x87cache[i] = -1;
         cache->mmxcache[i] = -1;
@@ -579,13 +577,11 @@ void neoncacheUnwind(neoncache_t* cache)
                 case NEON_CACHE_MM:
                     cache->mmxcache[cache->neoncache[i].n] = i;
                     ++cache->mmxcount;
-                    ++cache->fpu_reg;
                     break;
                 case NEON_CACHE_XMMR:
                 case NEON_CACHE_XMMW:
                     cache->ssecache[cache->neoncache[i].n].reg = i;
                     cache->ssecache[cache->neoncache[i].n].write = (cache->neoncache[i].t==NEON_CACHE_XMMW)?1:0;
-                    ++cache->fpu_reg;
                     break;
                 case NEON_CACHE_YMMR:
                 case NEON_CACHE_YMMW:
@@ -597,7 +593,6 @@ void neoncacheUnwind(neoncache_t* cache)
                     cache->x87cache[x87reg] = cache->neoncache[i].n;
                     cache->x87reg[x87reg] = i;
                     ++x87reg;
-                    ++cache->fpu_reg;
                     break;
                 case NEON_CACHE_SCR:
                     cache->fpuused[i] = 0;
@@ -617,7 +612,6 @@ void neoncacheUnwind(neoncache_t* cache)
                 cache->neoncache[reg].n = i;
                 cache->ssecache[i].reg = reg;
                 cache->ssecache[i].write = (cache->xmm_write&(1<<i))?1:0;
-                ++cache->fpu_reg;
             }
         cache->xmm_write = cache->xmm_removed = 0;
     }
@@ -780,7 +774,7 @@ void inst_name_pass3(dynarec_native_t* dyn, int ninst, const char* name, rex_t r
     if (!dyn->need_dump && !BOX64ENV(dynarec_gdbjit) && !BOX64ENV(dynarec_perf_map)) return;
 
     static char buf[4096];
-    int length = sprintf(buf, "barrier=%d state=%d/%d/%d(%d:%d->%d:%d), %s=%X/%X, use=%X, need=%X/%X, sm=%d(%d/%d)",
+    int length = sprintf(buf, "barrier=%d state=%d/%d/%d(%d:%d->%d:%d/%d), %s=%X/%X, use=%X, need=%X/%X, sm=%d(%d/%d)",
         dyn->insts[ninst].x64.barrier,
         dyn->insts[ninst].x64.state_flags,
         dyn->f.pending,
@@ -789,6 +783,7 @@ void inst_name_pass3(dynarec_native_t* dyn, int ninst, const char* name, rex_t r
         dyn->insts[ninst].f_entry.dfnone,
         dyn->insts[ninst].f_exit.pending,
         dyn->insts[ninst].f_exit.dfnone,
+        dyn->insts[ninst].f_exit.dfnone_here,
         dyn->insts[ninst].x64.may_set ? "may" : "set",
         dyn->insts[ninst].x64.set_flags,
         dyn->insts[ninst].x64.gen_flags,
@@ -1196,30 +1191,21 @@ void fpu_unwind_restore(dynarec_arm_t* dyn, int ninst, neoncache_t* cache)
     memcpy(&dyn->insts[ninst].n, cache, sizeof(neoncache_t));
 }
 
-static void propagateXMMUneeded(dynarec_arm_t* dyn, int ninst, int a)
+static void propagateXYMMUneeded(dynarec_arm_t* dyn, int ninst, uint16_t mask_x, uint16_t mask_y)
 {
     if(!ninst) return;
     ninst = getNominalPred(dyn, ninst);
     while(ninst>=0) {
-        if(dyn->insts[ninst].n.xmm_used&(1<<a)) return; // used, value is needed
+        mask_x &= ~dyn->insts[ninst].n.xmm_used;
+        mask_y &= ~dyn->insts[ninst].n.ymm_used;
+        if(!mask_x && !mask_y) return; // used, value is needed
         if(dyn->insts[ninst].x64.barrier&BARRIER_FLOAT) return; // barrier, value is needed
-        if(dyn->insts[ninst].n.xmm_unneeded&(1<<a)) return; // already handled
+        mask_x &= ~dyn->insts[ninst].n.xmm_unneeded;
+        mask_y &= ~dyn->insts[ninst].n.ymm_unneeded;
+        if(!mask_x && !mask_y) return; // already handled
         if(dyn->insts[ninst].x64.jmp) return;   // stop when a jump is detected, that gets too complicated
-        dyn->insts[ninst].n.xmm_unneeded |= (1<<a); // flags
-        ninst = getNominalPred(dyn, ninst); // continue
-    }
-}
-
-static void propagateYMMUneeded(dynarec_arm_t* dyn, int ninst, int a)
-{
-    if(!ninst) return;
-    ninst = getNominalPred(dyn, ninst);
-    while(ninst>=0) {
-        if(dyn->insts[ninst].n.ymm_used&(1<<a)) return; // used, value is needed
-        if(dyn->insts[ninst].x64.barrier&BARRIER_FLOAT) return; // barrier, value is needed
-        if(dyn->insts[ninst].n.ymm_unneeded&(1<<a)) return; // already handled
-        if(dyn->insts[ninst].x64.jmp) return;   // stop when a jump is detected, that gets too complicated
-        dyn->insts[ninst].n.ymm_unneeded |= (1<<a); // flags
+        dyn->insts[ninst].n.xmm_unneeded |= mask_x; // flags
+        dyn->insts[ninst].n.ymm_unneeded |= mask_y; // flags
         ninst = getNominalPred(dyn, ninst); // continue
     }
 }
@@ -1227,13 +1213,69 @@ static void propagateYMMUneeded(dynarec_arm_t* dyn, int ninst, int a)
 void updateUneeded(dynarec_arm_t* dyn)
 {
     for(int ninst=0; ninst<dyn->size; ++ninst) {
-        if(dyn->insts[ninst].n.xmm_unneeded)
-            for(int i=0; i<16; ++i)
-                if(dyn->insts[ninst].n.xmm_unneeded&(1<<i))
-                    propagateXMMUneeded(dyn, ninst, i);
-        if(dyn->insts[ninst].n.ymm_unneeded)
-            for(int i=0; i<16; ++i)
-                if(dyn->insts[ninst].n.ymm_unneeded&(1<<i))
-                    propagateYMMUneeded(dyn, ninst, i);
+        if(dyn->insts[ninst].n.xmm_unneeded || dyn->insts[ninst].n.ymm_unneeded)
+            propagateXYMMUneeded(dyn, ninst, dyn->insts[ninst].n.xmm_unneeded, dyn->insts[ninst].n.ymm_unneeded);
+    }
+}
+
+void tryEarlyFpuBarrier(dynarec_arm_t* dyn, int last_fpu_used, int ninst)
+{
+    // there is a barrier at ninst
+    // check if, up to last fpu_used, if there is some suspicious jump that would prevent the barrier to be put earlier
+    int usefull = 0;
+    for(int i=ninst-1; i>last_fpu_used; --i)
+    {
+        if(!dyn->insts[i].x64.has_next)
+            return; // break of chain, don't try to be smart for now
+        if(dyn->insts[i].x64.barrier&BARRIER_FLOAT)
+            return; // already done?
+        if(dyn->insts[i].x64.jmp && dyn->insts[i].x64.jmp_insts==-1)
+            usefull = 1;
+        if(dyn->insts[i].x64.jmp && dyn->insts[i].x64.jmp_insts!=-1) {
+            int i2 = dyn->insts[i].x64.jmp_insts;
+            if(i2<last_fpu_used || i2>ninst) {
+                // check if some xmm/ymm/x87 stack are used in landing point
+                if(i2>ninst) {
+                    if(dyn->insts[i2].n.xmm_used || dyn->insts[i2].n.ymm_used || dyn->insts[i2].n.stack)
+                        return;
+                }
+                // we will stop there, not trying to guess too much thing
+                if((usefull && (i+1)!=ninst)) {
+                    if(BOX64ENV(dynarec_dump) || BOX64ENV(dynarec_log)>1) dynarec_log(LOG_NONE, "Putting early Float Barrier in %d for %d\n", i+1, ninst);
+                    dyn->insts[i+1].x64.barrier|=BARRIER_FLOAT;
+                }
+                return;
+            }
+            usefull = 1;
+        }
+        for(int pred=0; pred<dyn->insts[i].pred_sz; ++pred) {
+            if(dyn->insts[i].pred[pred]<=last_fpu_used) {
+                if(usefull && ((i+1)!=ninst)) {
+                    if(BOX64ENV(dynarec_dump) || BOX64ENV(dynarec_log)>1) dynarec_log(LOG_NONE, "Putting early Float Barrier in %d for %d\n", i+1, ninst);
+                    dyn->insts[i+1].x64.barrier|=BARRIER_FLOAT;
+                }
+                return;
+            }
+        }
+        if(dyn->insts[i].pred_sz>1)
+            usefull = 1;
+    }
+    if(usefull) {
+        if(BOX64ENV(dynarec_dump) || BOX64ENV(dynarec_log)>1) dynarec_log(LOG_NONE, "Putting early Float Barrier in %d for %d\n", last_fpu_used, ninst);
+        dyn->insts[last_fpu_used+1].x64.barrier|=BARRIER_FLOAT;
+    }
+}
+
+void propagateFpuBarrier(dynarec_arm_t* dyn)
+{
+    int last_fpu_used = -1;
+    for(int ninst=0; ninst<dyn->size; ++ninst) {
+        int fpu_used = dyn->insts[ninst].n.xmm_used || dyn->insts[ninst].n.ymm_used || dyn->insts[ninst].mmx_used || dyn->insts[ninst].x87_used;
+        if(fpu_used) last_fpu_used = ninst;
+        dyn->insts[ninst].fpu_used = fpu_used;
+        if(dyn->insts[ninst].fpupurge && (last_fpu_used!=-1) && (last_fpu_used!=(ninst-1))) {
+            tryEarlyFpuBarrier(dyn, last_fpu_used, ninst);
+            last_fpu_used = -1;  // reset the last_fpu_used...
+        }
     }
 }
