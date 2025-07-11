@@ -1803,13 +1803,9 @@ uintptr_t dynarec64_660F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int n
             GETEX(v1, 0, 0);
             // FMIN/FMAX wll not copy the value if v0[x] is NaN
             // but x86 will copy if either v0[x] or v1[x] is NaN, so lets force a copy if source is NaN
-            if(BOX64ENV(dynarec_fastnan)) {
-                VFMINQD(v0, v0, v1);
-            } else {
-                q0 = fpu_get_scratch(dyn, ninst);
-                VFCMGTQD(q0, v1, v0);   // 0 is NaN or v1 GT v0, so invert mask for copy
-                VBIFQ(v0, v1, q0);
-            }
+            q0 = fpu_get_scratch(dyn, ninst);
+            VFCMGTQD(q0, v1, v0);   // 0 is NaN or v1 GT v0, so invert mask for copy
+            VBIFQ(v0, v1, q0);
             break;
         case 0x5E:
             INST_NAME("DIVPD Gx, Ex");
@@ -1838,13 +1834,9 @@ uintptr_t dynarec64_660F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int n
             GETEX(v1, 0, 0);
             // FMIN/FMAX wll not copy the value if v0[x] is NaN
             // but x86 will copy if either v0[x] or v1[x] is NaN, or if values are equals, so lets force a copy if source is NaN
-            if(BOX64ENV(dynarec_fastnan)) {
-                VFMAXQD(v0, v0, v1);
-            } else {
-                q0 = fpu_get_scratch(dyn, ninst);
-                VFCMGTQD(q0, v0, v1);   // 0 is NaN or v0 GT v1, so invert mask for copy
-                VBIFQ(v0, v1, q0);
-            }
+            q0 = fpu_get_scratch(dyn, ninst);
+            VFCMGTQD(q0, v0, v1);   // 0 is NaN or v0 GT v1, so invert mask for copy
+            VBIFQ(v0, v1, q0);
             break;
         case 0x60:
             INST_NAME("PUNPCKLBW Gx, Ex");
@@ -2753,8 +2745,9 @@ uintptr_t dynarec64_660F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int n
             }
             RBITw(x1, x1);   // reverse
             CLZw(x1, x1);    // x2 gets leading 0 == BSF
-            MARK;
+            if(!MODREG) MARK;   // value gets written on 0 input only if input is a memory it seems
             BFIx(gd, x1, 0, 16);
+            if(MODREG) MARK;
             IFX(X_ZF) {
                 IFNATIVE(NF_EQ) {} else {
                     CSETw(x2, cEQ);    //ZF not set
@@ -2790,8 +2783,9 @@ uintptr_t dynarec64_660F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int n
             CLZw(x2, x1);       // x2 gets leading 0
             SUBw_U12(x2, x2, 15);
             NEGw_REG(x1, x2);   // complement
-            MARK;
+            if(!MODREG) MARK;
             BFIx(gd, x1, 0, 16);
+            if(MODREG) MARK;
             IFX(X_ZF) {
                 IFNATIVE(NF_EQ) {} else {
                     CSETw(x2, cEQ);    //ZF not set

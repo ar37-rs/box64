@@ -6,6 +6,7 @@
 typedef struct x64emu_s x64emu_t;
 typedef struct dynablock_s dynablock_t;
 typedef struct instsize_s instsize_t;
+typedef struct box64env_s box64env_t;
 
 #define BARRIER_MAYBE   8
 
@@ -86,7 +87,6 @@ typedef struct neoncache_s {
 typedef struct flagcache_s {
     int                 pending;    // is there a pending flags here, or to check?
     uint8_t             dfnone;     // if deferred flags is already set to df_none
-    uint8_t             dfnone_here;// defered flags is cleared in this opcode
 } flagcache_t;
 
 typedef struct instruction_arm64_s {
@@ -186,6 +186,7 @@ typedef struct dynarec_arm_s {
     int                 need_reloc; // does the dynablock need relocations
     int                 reloc_size;
     uint32_t*           relocs;
+    box64env_t*         env;
 } dynarec_arm_t;
 
 void add_next(dynarec_arm_t *dyn, uintptr_t addr);

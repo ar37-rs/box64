@@ -2079,7 +2079,8 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
                     CMPSxw_REG(xRAX, ed);
                 }
                 MOVxw_REG(x1, ed); // save value
-                CSELxw(ed, gd, ed, cEQ);
+                Bcond(cNE, 4+4);
+                MOVxw_REG(ed, gd);
             } else {
                 addr = geted(dyn, addr, ninst, nextop, &wback, x2, &fixedaddress, &unscaled, 0xfff<<(2+rex.w), (1<<(2+rex.w))-1, rex, NULL, 0, 0);
                 LDxw(x1, wback, fixedaddress);
@@ -2330,7 +2331,7 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
             nextop = F8;
             GETED(0);
             GETGD;
-            if(ed!=gd)
+            if(!MODREG)
                 MOVxw_REG(gd, ed);  // to handle ed=0, setting UD gd to 0
             IFX(X_ZF) {
                 TSTxw_REG(ed, ed);
@@ -2366,7 +2367,7 @@ uintptr_t dynarec64_0F(dynarec_arm_t* dyn, uintptr_t addr, uintptr_t ip, int nin
             nextop = F8;
             GETED(0);
             GETGD;
-            if(ed!=gd)
+            if(!MODREG)
                 MOVxw_REG(gd, ed);  // to handle ed=0, setting UD gd to 0
             IFX(X_ZF) {
                 TSTxw_REG(ed, ed);

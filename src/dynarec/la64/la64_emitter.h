@@ -2622,4 +2622,84 @@ LSX instruction starts with V, LASX instruction starts with XV.
         }                   \
     } while (0)
 
+#define VAND_Vxy(vd, vj, vk)     \
+    do {                         \
+        if (vex.l) {             \
+            XVAND_V(vd, vj, vk); \
+        } else {                 \
+            VAND_V(vd, vj, vk);  \
+        }                        \
+    } while (0)
+
+#define VANDN_Vxy(vd, vj, vk)     \
+    do {                          \
+        if (vex.l) {              \
+            XVANDN_V(vd, vj, vk); \
+        } else {                  \
+            VANDN_V(vd, vj, vk);  \
+        }                         \
+    } while (0)
+
+#define VOR_Vxy(vd, vj, vk)     \
+    do {                        \
+        if (vex.l) {            \
+            XVOR_V(vd, vj, vk); \
+        } else {                \
+            VOR_V(vd, vj, vk);  \
+        }                       \
+    } while (0)
+
+#define VXOR_Vxy(vd, vj, vk)     \
+    do {                         \
+        if (vex.l) {             \
+            XVXOR_V(vd, vj, vk); \
+        } else {                 \
+            VXOR_V(vd, vj, vk);  \
+        }                        \
+    } while (0)
+
+#define VBSLL_Vxy(vd, vj, imm)     \
+    do {                           \
+        if (vex.l) {               \
+            XVBSLL_V(vd, vj, imm); \
+        } else {                   \
+            VBSLL_V(vd, vj, imm);  \
+        }                          \
+    } while (0)
+
+#define VBSRL_Vxy(vd, vj, imm)     \
+    do {                           \
+        if (vex.l) {               \
+            XVBSRL_V(vd, vj, imm); \
+        } else {                   \
+            VBSRL_V(vd, vj, imm);  \
+        }                          \
+    } while (0)
+
+#define VSLLIxy(width, vd, vj, imm)      \
+    do {                                 \
+        if (vex.l) {                     \
+            XVSLLI_##width(vd, vj, imm); \
+        } else {                         \
+            VSLLI_##width(vd, vj, imm);  \
+        }                                \
+    } while (0)
+
+#define VSRLIxy(width, vd, vj, imm)      \
+    do {                                 \
+        if (vex.l) {                     \
+            XVSRLI_##width(vd, vj, imm); \
+        } else {                         \
+            VSRLI_##width(vd, vj, imm);  \
+        }                                \
+    } while (0)
+
+#define VSRAIxy(width, vd, vj, imm)      \
+    do {                                 \
+        if (vex.l) {                     \
+            XVSRAI_##width(vd, vj, imm); \
+        } else {                         \
+            VSRAI_##width(vd, vj, imm);  \
+        }                                \
+    } while (0)
 #endif //__ARM64_EMITTER_H__
