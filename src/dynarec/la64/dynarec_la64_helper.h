@@ -642,6 +642,16 @@
     GETGYxy(gx, 0);            \
     GETEYxy(ex, 1, D);
 
+// Get writable GYx, and non-written VYx, EYSD or EYSS , for FMA SD/SSinsts.
+#define GETGYx_VYx_EYxw(gx, vx, ex, D) \
+    GETVYx(vx, 0);                     \
+    if (rex.w) {                       \
+        GETEYSD(ex, 0, D)              \
+    } else {                           \
+        GETEYSS(ex, 0, D);             \
+    }                                  \
+    GETGYx(gx, 1);
+
 // Get direction with size Z and based of F_DF flag, on register r ready for load/store fetching
 // using s as scratch.
 // F_DF is not in LBT4.eflags, don't worry
@@ -848,14 +858,16 @@
     LOAD_REG(R14);      \
     LOAD_REG(R15);
 
-#define SET_DFNONE()                                 \
-    do {                                             \
-        if (!dyn->f.dfnone) {                        \
-            ST_W(xZR, xEmu, offsetof(x64emu_t, df)); \
-        }                                            \
-        if (!dyn->insts[ninst].x64.may_set) {        \
-            dyn->f.dfnone = 1;                       \
-        }                                            \
+#define FORCE_DFNONE() ST_W(xZR, xEmu, offsetof(x64emu_t, df))
+
+#define SET_DFNONE()                          \
+    do {                                      \
+        if (!dyn->f.dfnone) {                 \
+            FORCE_DFNONE();                   \
+        }                                     \
+        if (!dyn->insts[ninst].x64.may_set) { \
+            dyn->f.dfnone = 1;                \
+        }                                     \
     } while (0)
 
 #define SET_DF(S, N)                                           \
@@ -874,7 +886,7 @@
         SET_DFNONE()
 
 #define SET_NODF() dyn->f.dfnone = 0
-#define SET_DFOK()     \
+#define SET_DFOK() \
     dyn->f.dfnone = 1
 
 #define CLEAR_FLAGS_(s)                                                                                       \
@@ -1026,6 +1038,10 @@
 #define TABLE64C(A, V)
 #endif
 
+#ifndef TABLE64_
+#define TABLE64_(A, V)
+#endif
+
 #define ARCH_INIT() SMSTART()
 
 #define ARCH_RESET()
@@ -1039,7 +1055,11 @@
     do {                                                          \
         ssize_t _delta_ip = (ssize_t)(A) - (ssize_t)dyn->last_ip; \
         if (!dyn->last_ip) {                                      \
-            MOV64x(xRIP, A);                                      \
+            if (dyn->need_reloc) {                                \
+                TABLE64(xRIP, (A));                               \
+            } else {                                              \
+                MOV64x(xRIP, (A));                                \
+            }                                                     \
         } else if (_delta_ip == 0) {                              \
         } else if (_delta_ip >= -2048 && _delta_ip < 2048) {      \
             ADDI_D(xRIP, xRIP, _delta_ip);                        \
@@ -1050,7 +1070,11 @@
             MOV32w(scratch, _delta_ip);                           \
             ADD_D(xRIP, xRIP, scratch);                           \
         } else {                                                  \
-            MOV64x(xRIP, (A));                                    \
+            if (dyn->need_reloc) {                                \
+                TABLE64(xRIP, (A));                               \
+            } else {                                              \
+                MOV64x(xRIP, (A));                                \
+            }                                                     \
         }                                                         \
     } while (0)
 #define GETIP(A, scratch) \
