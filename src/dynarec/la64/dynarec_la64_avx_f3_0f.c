@@ -51,7 +51,7 @@ uintptr_t dynarec64_AVX_F3_0F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip,
                 GETVYx(q1, 0);
                 GETEYSS(q2, 0, 0);
                 GETGYx_empty(q0);
-                if (!gd == vex.v) VOR_V(q0, q1, q1);
+                if (gd != vex.v) VOR_V(q0, q1, q1);
                 VEXTRINS_W(q0, q2, 0);
             } else {
                 GETEYSS(q2, 0, 0);
@@ -334,7 +334,7 @@ uintptr_t dynarec64_AVX_F3_0F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip,
         case 0x5D:
             INST_NAME("VMINSS Gx, Vx, Ex");
             nextop = F8;
-            GETVYx(v1, 1);
+            GETVYx(v1, 0);
             GETEYSS(v2, 0, 0);
             GETGYx_empty(v0);
             q0 = fpu_get_scratch(dyn);
@@ -369,7 +369,7 @@ uintptr_t dynarec64_AVX_F3_0F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip,
         case 0x5F:
             INST_NAME("VMAXSS Gx, Vx, Ex");
             nextop = F8;
-            GETVYx(v1, 1);
+            GETVYx(v1, 0);
             GETEYSS(v2, 0, 0);
             GETGYx_empty(v0);
             q0 = fpu_get_scratch(dyn);
@@ -451,7 +451,7 @@ uintptr_t dynarec64_AVX_F3_0F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip,
             nextop = F8;
             GETVYx(v1, 0);
             GETEYSS(v2, 0, 1);
-            GETGYx_empty(v0);
+            GETGYx(v0, 1);
             q0 = fpu_get_scratch(dyn);
             u8 = F8;
             switch (u8 & 0xf) {
@@ -473,6 +473,7 @@ uintptr_t dynarec64_AVX_F3_0F(dynarec_la64_t* dyn, uintptr_t addr, uintptr_t ip,
                 case 0x0f: VSEQ_B(q0, v1, v1); break;        // true
             }
             XVXOR_V(v0, v0, v0);
+            XVPERMI_Q(v0, v1, XVPERMI_IMM_4_0(3, 0));
             XVINSVE0_W(v0, q0, 0);
             YMM_UNMARK_UPPER_ZERO(v0);
             break;
