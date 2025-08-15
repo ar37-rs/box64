@@ -71,6 +71,31 @@ uintptr_t dynarec64_F0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
             }
             SMDMB();
             break;
+        case 0x08:
+            INST_NAME("LOCK OR Eb, Gb");
+            SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
+            nextop = F8;
+            GETGB(x1);
+            SMDMB();
+            if (MODREG) {
+                GETEB(x2, 1);
+                emit_or8(dyn, ninst, x2, x1, x4, x5);
+                EBBACK(x5, 0);
+            } else {
+                addr = geted(dyn, addr, ninst, nextop, &wback, x5, x6, &fixedaddress, rex, LOCK_LOCK, 0, 0);
+                ANDI(x2, wback, 3);
+                SLLI(x2, x2, 3);
+                ANDI(x3, wback, ~3);
+                SLL(x1, x1, x2);
+                AMOOR_W(x4, x1, x3, 1, 1);
+                IFXORNAT (X_ALL | X_PEND) {
+                    SRL(x2, x4, x2);
+                    ANDI(x2, x2, 0xFF);
+                    emit_or8(dyn, ninst, x2, x1, x4, x5);
+                }
+            }
+            SMDMB();
+            break;
         case 0x09:
             INST_NAME("LOCK OR Ed, Gd");
             SETFLAGS(X_ALL, SF_SET_PENDING, NAT_FLAGS_FUSION);
@@ -486,9 +511,9 @@ uintptr_t dynarec64_F0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
                 B_MARK3_nocond;
                 MARK;
                 SLLI(x3, x3, 3);
-                MOV_U12(x4, 0xff);
+                ADDI(x4, xZR, 0xff);
                 ANDI(wback, wback, ~3); // aligning address
-                SLLI(x4, x4, x3);       // x4 = byte mask
+                SLL(x4, x4, x3);       // x4 = byte mask
                 NOT(x5, x4);            // x5 = ~mask
                 SLL(x2, x2, x3);        // x2 = extented Gb
                 MARK2;
@@ -499,12 +524,15 @@ uintptr_t dynarec64_F0(dynarec_rv64_t* dyn, uintptr_t addr, uintptr_t ip, int ni
                 ANDI(x4, xFlags, 1 << F_CF);
                 SLL(x4, x4, x3);  // extented
                 ADDW(x5, x5, x4); // x5 = adc
+                ADDI(x4, xZR, 0xff);
+                SLL(x4, x4, x3);
+                AND(x5, x5, x4);
                 OR(x5, x5, x6);
                 SC_W(x4, x5, wback, 1, 1);
                 BNEZ_MARK2(x4);
                 IFXORNAT (X_ALL | X_PEND) {
-                    SRLI(x2, x2, x3); // Gb
-                    SRLI(x4, x7, x3); // Eb
+                    SRL(x2, x2, x3); // Gb
+                    SRL(x4, x7, x3); // Eb
                 }
                 MARK3;
                 IFXORNAT (X_ALL | X_PEND) {
